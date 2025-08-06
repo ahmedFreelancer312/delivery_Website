@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Navbar } from "@/components/layout/Navbar";
-import { supabase } from '@/integrations/supabase/client';
+import { toast } from "@/components/ui/use-toast";
 import { Star, Clock, MapPin, ShoppingBag, Truck, Users, ChefHat } from 'lucide-react';
 
 interface Restaurant {
@@ -18,18 +18,20 @@ interface Restaurant {
 }
 
 interface MenuItem {
-  id: string;
+  _id: string; // استبدلت id بـ _id لأنه المستخدم في MongoDB
   name: string;
   description: string;
   price: number;
   image_url: string;
   category: string;
+  restaurantId: string;
 }
 
 const Index = () => {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [featuredItems, setFeaturedItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const userId = "USER_ID_HERE"; // استبدل بـ userId من حالة المصادقة
 
   useEffect(() => {
     fetchData();
@@ -37,26 +39,44 @@ const Index = () => {
 
   const fetchData = async () => {
     try {
-      // Fetch restaurants
-      const { data: restaurantsData } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('is_active', true)
-        .limit(6);
-
-      // Fetch featured menu items
-      const { data: menuData } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('is_available', true)
-        .limit(8);
-
+      // جلب المطاعم
+      const restaurantsResponse = await fetch("http://localhost:5000/api/restaurants");
+      const restaurantsData = await restaurantsResponse.json();
       setRestaurants(restaurantsData || []);
+
+      // جلب الأطباق المميزة
+      const menuResponse = await fetch("http://localhost:5000/api/menu-items");
+      const menuData = await menuResponse.json();
       setFeaturedItems(menuData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
+      toast({ title: "خطأ", description: "فشل جلب البيانات", variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // دالة إضافة المنتج للسلة
+  const addToCart = async (menuItem: MenuItem) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/cart/${userId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          menuItemId: menuItem._id,
+          quantity: 1,
+          price: menuItem.price,
+          restaurantId: menuItem.restaurantId,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        toast({ title: "تم", description: "تم إضافة المنتج للسلة" });
+      } else {
+        toast({ title: "خطأ", description: data.message || "فشل إضافة المنتج", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "خطأ", description: "فشل الاتصال بالخادم", variant: "destructive" });
     }
   };
 
@@ -82,7 +102,7 @@ const Index = () => {
             
             <div className="glass-card p-8 rounded-3xl max-w-2xl mx-auto">
               <p className="text-lg text-foreground/90 mb-6">
-                اطلب من مطاعمك المفضلة واستمتع بالتوصيل السريع إلى باب منزلك
+                اطلب من مطاعمنك المفضلة واستمتع بالتوصيل السريع إلى باب منزلك
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button size="lg" asChild className="bg-gradient-to-r from-primary to-accent glowing">
@@ -221,7 +241,7 @@ const Index = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {featuredItems.map((item) => (
-                <Card key={item.id} className="glass-card hover:scale-105 transition-transform duration-300">
+                <Card key={item._id} className="glass-card hover:scale-105 transition-transform duration-300">
                   <div className="relative h-40 overflow-hidden rounded-t-lg">
                     <img
                       src={item.image_url || "/placeholder.svg"}
@@ -244,6 +264,12 @@ const Index = () => {
                         {item.category}
                       </Badge>
                     )}
+                    <Button
+                      className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                      onClick={() => addToCart(item)}
+                    >
+                      إضافة للسلة
+                    </Button>
                   </CardContent>
                 </Card>
               ))}
